@@ -14,7 +14,7 @@ TextMateScopeSelector = require('first-mate').ScopeSelector
 {Directory} = require "pathwatcher"
 GutterContainer = require './gutter-container'
 
-# Public: This class represents all essential editing state for a single
+# Essential: This class represents all essential editing state for a single
 # {TextBuffer}, including cursor and selection positions, folds, and soft wraps.
 # If you're manipulating the state of an editor, use this class. If you're
 # interested in the visual appearance of editors, use {TextEditorView} instead.
@@ -95,7 +95,7 @@ class TextEditor extends Model
     @subscribeToBuffer()
     @subscribeToDisplayBuffer()
 
-    if @getCursors().length is 0 and not suppressCursorCreation
+    if @cursors.length is 0 and not suppressCursorCreation
       initialLine = Math.max(parseInt(initialLine) or 0, 0)
       initialColumn = Math.max(parseInt(initialColumn) or 0, 0)
       @addCursorAtBufferPosition([initialLine, initialColumn])
@@ -185,7 +185,7 @@ class TextEditor extends Model
     @unsubscribe() if includeDeprecatedAPIs
     @disposables.dispose()
     @tabTypeSubscription.dispose()
-    selection.destroy() for selection in @getSelections()
+    selection.destroy() for selection in @selections.slice()
     @buffer.release()
     @displayBuffer.destroy()
     @languageMode.destroy()
@@ -341,7 +341,7 @@ class TextEditor extends Model
   onDidInsertText: (callback) ->
     @emitter.on 'did-insert-text', callback
 
-  # Public: Invoke the given callback after the buffer is saved to disk.
+  # Essential: Invoke the given callback after the buffer is saved to disk.
   #
   # * `callback` {Function} to be called after the buffer is saved.
   #   * `event` {Object} with the following keys:
@@ -351,7 +351,7 @@ class TextEditor extends Model
   onDidSave: (callback) ->
     @getBuffer().onDidSave(callback)
 
-  # Public: Invoke the given callback when the editor is destroyed.
+  # Essential: Invoke the given callback when the editor is destroyed.
   #
   # * `callback` {Function} to be called when the editor is destroyed.
   #
@@ -470,7 +470,7 @@ class TextEditor extends Model
   onDidUpdateMarkers: (callback) ->
     @displayBuffer.onDidUpdateMarkers(callback)
 
-  # Public: Retrieves the current {TextBuffer}.
+  # Essential: Retrieves the current {TextBuffer}.
   getBuffer: -> @buffer
 
   # Retrieves the current buffer's URI.
@@ -514,20 +514,7 @@ class TextEditor extends Model
   onDidChangeLineNumberGutterVisible: (callback) ->
     @emitter.on 'did-change-line-number-gutter-visible', callback
 
-  # Public: Creates and returns a {Gutter}.
-  # See {GutterContainer::addGutter} for more details.
-  addGutter: (options) ->
-    @gutterContainer.addGutter(options)
-
-  # Public: Returns the {Array} of all gutters on this editor.
-  getGutters: ->
-    @gutterContainer.getGutters()
-
-  # Public: Returns the {Gutter} with the given name, or null if it doesn't exist.
-  gutterWithName: (name) ->
-    @gutterContainer.gutterWithName(name)
-
-  # Calls your `callback` when a {Gutter} is added to the editor.
+  # Essential: Calls your `callback` when a {Gutter} is added to the editor.
   # Immediately calls your callback for each existing gutter.
   #
   # * `callback` {Function}
@@ -537,7 +524,7 @@ class TextEditor extends Model
   observeGutters: (callback) ->
     @gutterContainer.observeGutters callback
 
-  # Calls your `callback` when a {Gutter} is added to the editor.
+  # Essential: Calls your `callback` when a {Gutter} is added to the editor.
   #
   # * `callback` {Function}
   #   * `gutter` {Gutter} that was added.
@@ -546,7 +533,7 @@ class TextEditor extends Model
   onDidAddGutter: (callback) ->
     @gutterContainer.onDidAddGutter callback
 
-  # Calls your `callback` when a {Gutter} is removed from the editor.
+  # Essential: Calls your `callback` when a {Gutter} is removed from the editor.
   #
   # * `callback` {Function}
   #   * `name` The name of the {Gutter} that was removed.
@@ -629,7 +616,7 @@ class TextEditor extends Model
   # See {TextBuffer::save} for more details.
   save: -> @buffer.save(backup: atom.config.get('editor.backUpBeforeSaving'))
 
-  # Public: Saves the editor's text buffer as the given path.
+  # Essential: Saves the editor's text buffer as the given path.
   #
   # See {TextBuffer::saveAs} for more details.
   #
@@ -742,7 +729,7 @@ class TextEditor extends Model
   # {Delegates to: TextBuffer.getEndPosition}
   getEofBufferPosition: -> @buffer.getEndPosition()
 
-  # Public: Get the {Range} of the paragraph surrounding the most recently added
+  # Essential: Get the {Range} of the paragraph surrounding the most recently added
   # cursor.
   #
   # Returns a {Range}.
@@ -1119,12 +1106,12 @@ class TextEditor extends Model
 
   # Essential: Undo the last change.
   undo: ->
-    @buffer.undo()
+    @avoidMergingSelections => @buffer.undo()
     @getLastSelection().autoscroll()
 
   # Essential: Redo the last change.
   redo: ->
-    @buffer.redo(this)
+    @avoidMergingSelections => @buffer.redo()
     @getLastSelection().autoscroll()
 
   # Extended: Batch multiple operations as a single undo/redo step.
@@ -1292,7 +1279,7 @@ class TextEditor extends Model
   #
   # * __line__: Adds your CSS `class` to the line nodes within the range
   #     marked by the marker
-  # * __gutter__: Adds your CSS `class` to the line number nodes within the
+  # * __line-number__: Adds your CSS `class` to the line number nodes within the
   #     range marked by the marker
   # * __highlight__: Adds a new highlight div to the editor surrounding the
   #     range marked by the marker. When the user selects text, the selection is
@@ -1310,9 +1297,9 @@ class TextEditor extends Model
   # * `marker` A {Marker} you want this decoration to follow.
   # * `decorationParams` An {Object} representing the decoration e.g.
   #   `{type: 'line-number', class: 'linter-error'}`
-  #   * `type` There are a few supported decoration types: `gutter`, `line`,
+  #   * `type` There are a few supported decoration types: `line-number`, `line`,
   #     `highlight`, and `overlay`. The behavior of the types are as follows:
-  #     * `gutter` Adds the given `class` to the line numbers overlapping the
+  #     * `line-number` Adds the given `class` to the line numbers overlapping the
   #       rows spanned by the marker.
   #     * `line` Adds the given `class` to the lines overlapping the rows
   #        spanned by the marker.
@@ -1324,19 +1311,17 @@ class TextEditor extends Model
   #   * `class` This CSS class will be applied to the decorated line number,
   #     line, highlight, or overlay.
   #   * `onlyHead` (optional) If `true`, the decoration will only be applied to
-  #     the head of the marker. Only applicable to the `line` and `gutter`
+  #     the head of the marker. Only applicable to the `line` and `line-number`
   #     types.
   #   * `onlyEmpty` (optional) If `true`, the decoration will only be applied if
   #     the associated marker is empty. Only applicable to the `line` and
-  #     `gutter` types.
+  #     `line-number` types.
   #   * `onlyNonEmpty` (optional) If `true`, the decoration will only be applied
   #     if the associated marker is non-empty.  Only applicable to the `line`
-  #     and gutter types.
+  #     and `line-number` types.
   #   * `position` (optional) Only applicable to decorations of type `overlay`,
   #     controls where the overlay view is positioned relative to the marker.
   #     Values can be `'head'` (the default), or `'tail'`.
-  #   * `gutterName` (optional) Only applicable to the `gutter` type. If provided,
-  #     the decoration will be applied to the gutter with the specified name.
   #
   # Returns a {Decoration} object
   decorateMarker: (marker, decorationParams) ->
@@ -1345,7 +1330,7 @@ class TextEditor extends Model
       decorationParams.type = 'line-number'
     @displayBuffer.decorateMarker(marker, decorationParams)
 
-  # Public: Get all the decorations within a screen row range.
+  # Essential: Get all the decorations within a screen row range.
   #
   # * `startScreenRow` the {Number} beginning screen row
   # * `endScreenRow` the {Number} end screen row (inclusive)
@@ -1744,6 +1729,7 @@ class TextEditor extends Model
 
   # Extended: Returns the most recently added {Cursor}
   getLastCursor: ->
+    @createLastSelectionIfNeeded()
     _.last(@cursors)
 
   # Extended: Returns the word surrounding the most recently added cursor.
@@ -1754,6 +1740,7 @@ class TextEditor extends Model
 
   # Extended: Get an Array of all {Cursor}s.
   getCursors: ->
+    @createLastSelectionIfNeeded()
     @cursors.slice()
 
   # Extended: Get all {Cursors}s, ordered by their position in the buffer
@@ -1839,6 +1826,8 @@ class TextEditor extends Model
   # * `options` (optional) An options {Object}:
   #   * `reversed` A {Boolean} indicating whether to create the selection in a
   #     reversed orientation.
+  #   * `preserveFolds` A {Boolean}, which if `true` preserves the fold settings after the
+  #     selection is set.
   setSelectedBufferRange: (bufferRange, options) ->
     @setSelectedBufferRanges([bufferRange], options)
 
@@ -1849,6 +1838,8 @@ class TextEditor extends Model
   # * `options` (optional) An options {Object}:
   #   * `reversed` A {Boolean} indicating whether to create the selection in a
   #     reversed orientation.
+  #   * `preserveFolds` A {Boolean}, which if `true` preserves the fold settings after the
+  #     selection is set.
   setSelectedBufferRanges: (bufferRanges, options={}) ->
     throw new Error("Passed an empty array to setSelectedBufferRanges") unless bufferRanges.length
 
@@ -1954,10 +1945,10 @@ class TextEditor extends Model
   # This method may merge selections that end up intesecting.
   #
   # * `position` An instance of {Point}, with a given `row` and `column`.
-  selectToScreenPosition: (position, suppressMerge) ->
+  selectToScreenPosition: (position, options) ->
     lastSelection = @getLastSelection()
-    lastSelection.selectToScreenPosition(position)
-    unless suppressMerge
+    lastSelection.selectToScreenPosition(position, options)
+    unless options?.suppressSelectionMerge
       @mergeIntersectingSelections(reversed: lastSelection.isReversed())
 
   # Essential: Move the cursor of each selection one character upward while
@@ -2129,12 +2120,14 @@ class TextEditor extends Model
   #
   # Returns a {Selection}.
   getLastSelection: ->
+    @createLastSelectionIfNeeded()
     _.last(@selections)
 
   # Extended: Get current {Selection}s.
   #
   # Returns: An {Array} of {Selection}s.
   getSelections: ->
+    @createLastSelectionIfNeeded()
     @selections.slice()
 
   # Extended: Get all {Selection}s, ordered by their position in the buffer
@@ -2213,6 +2206,9 @@ class TextEditor extends Model
 
       previousSelection.intersectsScreenRowRange(screenRange.start.row, screenRange.end.row)
 
+  avoidMergingSelections: (args...) ->
+    @mergeSelections args..., -> false
+
   mergeSelections: (args...) ->
     mergePredicate = args.pop()
     fn = args.pop() if _.isFunction(_.last(args))
@@ -2288,6 +2284,10 @@ class TextEditor extends Model
     @emit 'selection-screen-range-changed', event if includeDeprecatedAPIs
     @emitter.emit 'did-change-selection-range', event
 
+  createLastSelectionIfNeeded: ->
+    if @selections.length is 0
+      @addSelectionForBufferRange([[0, 0], [0, 0]], autoscroll: false, preserveFolds: true)
+
   ###
   Section: Searching and Replacing
   ###
@@ -2310,7 +2310,7 @@ class TextEditor extends Model
   #     * `replace` Call this {Function} with a {String} to replace the match.
   scan: (regex, iterator) -> @buffer.scan(regex, iterator)
 
-  # Public: Scan regular expression matches in a given range, calling the given
+  # Essential: Scan regular expression matches in a given range, calling the given
   # iterator function on each match.
   #
   # * `regex` A {RegExp} to search for.
@@ -2324,7 +2324,7 @@ class TextEditor extends Model
   #   * `replace` Call this {Function} with a {String} to replace the match.
   scanInBufferRange: (regex, range, iterator) -> @buffer.scanInRange(regex, range, iterator)
 
-  # Public: Scan regular expression matches in a given range in reverse order,
+  # Essential: Scan regular expression matches in a given range in reverse order,
   # calling the given iterator function on each match.
   #
   # * `regex` A {RegExp} to search for.
@@ -2436,7 +2436,7 @@ class TextEditor extends Model
   # Returns a {Boolean}.
   toggleSoftWrapped: -> @setSoftWrapped(not @isSoftWrapped())
 
-  # Public: Gets the column at which column will soft wrap
+  # Essential: Gets the column at which column will soft wrap
   getSoftWrapColumn: -> @displayBuffer.getSoftWrapColumn()
 
   ###
@@ -2671,7 +2671,7 @@ class TextEditor extends Model
       @emit('did-insert-text', didInsertEvent) if includeDeprecatedAPIs
       @emitter.emit 'did-insert-text', didInsertEvent
 
-  # Public: For each selection, if the selection is empty, cut all characters
+  # Essential: For each selection, if the selection is empty, cut all characters
   # of the containing line following the cursor. Otherwise cut the selected
   # text.
   cutToEndOfLine: ->
@@ -2820,6 +2820,36 @@ class TextEditor extends Model
     @displayBuffer.outermostFoldsInBufferRowRange(startRow, endRow)
 
   ###
+  Section: Gutters
+  ###
+
+  # Essential: Add a custom {Gutter}.
+  #
+  # * `options` An {Object} with the following fields:
+  #   * `name` (required) A unique {String} to identify this gutter.
+  #   * `priority` (optional) A {Number} that determines stacking order between
+  #       gutters. Lower priority items are forced closer to the edges of the
+  #       window. (default: -100)
+  #   * `visible` (optional) {Boolean} specifying whether the gutter is visible
+  #       initially after being created. (default: true)
+  #
+  # Returns the newly-created {Gutter}.
+  addGutter: (options) ->
+    @gutterContainer.addGutter(options)
+
+  # Essential: Get this editor's gutters.
+  #
+  # Returns an {Array} of {Gutter}s.
+  getGutters: ->
+    @gutterContainer.getGutters()
+
+  # Essential: Get the gutter with the given name.
+  #
+  # Returns a {Gutter}, or `null` if no gutter exists for the given name.
+  gutterWithName: (name) ->
+    @gutterContainer.gutterWithName(name)
+
+  ###
   Section: Scrolling the TextEditor
   ###
 
@@ -2870,14 +2900,10 @@ class TextEditor extends Model
   setVerticalScrollbarWidth: (width) -> @displayBuffer.setVerticalScrollbarWidth(width)
 
   pageUp: ->
-    newScrollTop = @getScrollTop() - @getHeight()
     @moveUp(@getRowsPerPage())
-    @setScrollTop(newScrollTop)
 
   pageDown: ->
-    newScrollTop = @getScrollTop() + @getHeight()
     @moveDown(@getRowsPerPage())
-    @setScrollTop(newScrollTop)
 
   selectPageUp: ->
     @selectUp(@getRowsPerPage())
@@ -2887,7 +2913,7 @@ class TextEditor extends Model
 
   # Returns the number of rows per page
   getRowsPerPage: ->
-    Math.max(1, Math.ceil(@getHeight() / @getLineHeightInPixels()))
+    Math.max(1, Math.floor(@getHeight() / @getLineHeightInPixels()))
 
   ###
   Section: Config
@@ -2919,13 +2945,13 @@ class TextEditor extends Model
   Section: TextEditor Rendering
   ###
 
-  # Public: Retrieves the greyed out placeholder of a mini editor.
+  # Essential: Retrieves the greyed out placeholder of a mini editor.
   #
   # Returns a {String}.
   getPlaceholderText: ->
     @placeholderText
 
-  # Public: Set the greyed out placeholder of a mini editor. Placeholder text
+  # Essential: Set the greyed out placeholder of a mini editor. Placeholder text
   # will be displayed when the editor has no content.
   #
   # * `placeholderText` {String} text that is displayed when the editor has no content.

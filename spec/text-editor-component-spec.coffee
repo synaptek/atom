@@ -88,7 +88,22 @@ describe "TextEditorComponent", ->
       else
         expect(lineNode.textContent).toBe(tokenizedLine.text)
 
-    it "renders tiles upper in the stack in front of the ones below", ->
+    it "gives the lines container the same height as the wrapper node", ->
+      linesNode = componentNode.querySelector(".lines")
+
+      wrapperNode.style.height = 6.5 * lineHeightInPixels + 'px'
+      component.measureDimensions()
+      nextAnimationFrame()
+
+      expect(linesNode.getBoundingClientRect().height).toBe(6.5 * lineHeightInPixels)
+
+      wrapperNode.style.height = 3.5 * lineHeightInPixels + 'px'
+      component.measureDimensions()
+      nextAnimationFrame()
+
+      expect(linesNode.getBoundingClientRect().height).toBe(3.5 * lineHeightInPixels)
+
+    it "renders higher tiles in front of lower ones", ->
       wrapperNode.style.height = 6.5 * lineHeightInPixels + 'px'
       component.measureDimensions()
       nextAnimationFrame()
@@ -585,6 +600,63 @@ describe "TextEditorComponent", ->
 
       expect(lineNode.offsetTop).toBe(top)
       expect(lineNode.textContent).toBe(text)
+
+    it "renders higher tiles in front of lower ones", ->
+      wrapperNode.style.height = 6.5 * lineHeightInPixels + 'px'
+      component.measureDimensions()
+      nextAnimationFrame()
+
+      tilesNodes = componentNode.querySelector(".line-numbers").querySelectorAll(".tile")
+
+      expect(tilesNodes[0].style.zIndex).toBe("2")
+      expect(tilesNodes[1].style.zIndex).toBe("1")
+      expect(tilesNodes[2].style.zIndex).toBe("0")
+
+      verticalScrollbarNode.scrollTop = 1 * lineHeightInPixels
+      verticalScrollbarNode.dispatchEvent(new UIEvent('scroll'))
+      nextAnimationFrame()
+
+      tilesNodes = componentNode.querySelector(".line-numbers").querySelectorAll(".tile")
+
+      expect(tilesNodes[0].style.zIndex).toBe("3")
+      expect(tilesNodes[1].style.zIndex).toBe("2")
+      expect(tilesNodes[2].style.zIndex).toBe("1")
+      expect(tilesNodes[3].style.zIndex).toBe("0")
+
+    it "renders higher line numbers in front of lower ones", ->
+      wrapperNode.style.height = 6.5 * lineHeightInPixels + 'px'
+      component.measureDimensions()
+      nextAnimationFrame()
+
+      # Tile 0
+      expect(component.lineNumberNodeForScreenRow(0).style.zIndex).toBe("2")
+      expect(component.lineNumberNodeForScreenRow(1).style.zIndex).toBe("1")
+      expect(component.lineNumberNodeForScreenRow(2).style.zIndex).toBe("0")
+
+      # Tile 1
+      expect(component.lineNumberNodeForScreenRow(3).style.zIndex).toBe("2")
+      expect(component.lineNumberNodeForScreenRow(4).style.zIndex).toBe("1")
+      expect(component.lineNumberNodeForScreenRow(5).style.zIndex).toBe("0")
+
+      # Tile 2
+      expect(component.lineNumberNodeForScreenRow(6).style.zIndex).toBe("2")
+      expect(component.lineNumberNodeForScreenRow(7).style.zIndex).toBe("1")
+      expect(component.lineNumberNodeForScreenRow(8).style.zIndex).toBe("0")
+
+    it "gives the line numbers container the same height as the wrapper node", ->
+      linesNode = componentNode.querySelector(".line-numbers")
+
+      wrapperNode.style.height = 6.5 * lineHeightInPixels + 'px'
+      component.measureDimensions()
+      nextAnimationFrame()
+
+      expect(linesNode.getBoundingClientRect().height).toBe(6.5 * lineHeightInPixels)
+
+      wrapperNode.style.height = 3.5 * lineHeightInPixels + 'px'
+      component.measureDimensions()
+      nextAnimationFrame()
+
+      expect(linesNode.getBoundingClientRect().height).toBe(3.5 * lineHeightInPixels)
 
     it "renders the currently-visible line numbers in a tiled fashion", ->
       wrapperNode.style.height = 4.5 * lineHeightInPixels + 'px'
@@ -1778,6 +1850,40 @@ describe "TextEditorComponent", ->
         nextAnimationFrame()
         expect(editor.getSelectedScreenRange()).toEqual [[2, 4], [10, 0]]
 
+      it "autoscrolls when the cursor approaches the boundaries of the editor", ->
+        wrapperNode.style.height = '100px'
+        wrapperNode.style.width = '100px'
+        component.measureDimensions()
+        nextAnimationFrame()
+
+        expect(editor.getScrollTop()).toBe(0)
+        expect(editor.getScrollLeft()).toBe(0)
+
+        linesNode.dispatchEvent(buildMouseEvent('mousedown', {clientX: 0, clientY: 0}, which: 1))
+        linesNode.dispatchEvent(buildMouseEvent('mousemove', {clientX: 100, clientY: 50}, which: 1))
+        nextAnimationFrame()
+
+        expect(editor.getScrollTop()).toBe(0)
+        expect(editor.getScrollLeft()).toBeGreaterThan(0)
+
+        linesNode.dispatchEvent(buildMouseEvent('mousemove', {clientX: 100, clientY: 100}, which: 1))
+        nextAnimationFrame()
+        expect(editor.getScrollTop()).toBeGreaterThan(0)
+
+        previousScrollTop = editor.getScrollTop()
+        previousScrollLeft = editor.getScrollLeft()
+
+        linesNode.dispatchEvent(buildMouseEvent('mousemove', {clientX: 10, clientY: 50}, which: 1))
+        nextAnimationFrame()
+
+        expect(editor.getScrollTop()).toBe(previousScrollTop)
+        expect(editor.getScrollLeft()).toBeLessThan(previousScrollLeft)
+
+        linesNode.dispatchEvent(buildMouseEvent('mousemove', {clientX: 10, clientY: 10}, which: 1))
+        nextAnimationFrame()
+
+        expect(editor.getScrollTop()).toBeLessThan(previousScrollTop)
+
       it "stops selecting if the mouse is dragged into the dev tools", ->
         linesNode.dispatchEvent(buildMouseEvent('mousedown', clientCoordinatesForScreenPosition([2, 4]), which: 1))
         linesNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenPosition([6, 8]), which: 1))
@@ -1792,16 +1898,13 @@ describe "TextEditorComponent", ->
         expect(nextAnimationFrame).toBe noAnimationFrame
         expect(editor.getSelectedScreenRange()).toEqual [[2, 4], [6, 8]]
 
-      it "stops selecting if a textInput event occurs during the drag", ->
+      it "stops selecting before the buffer is modified during the drag", ->
         linesNode.dispatchEvent(buildMouseEvent('mousedown', clientCoordinatesForScreenPosition([2, 4]), which: 1))
         linesNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenPosition([6, 8]), which: 1))
         nextAnimationFrame()
         expect(editor.getSelectedScreenRange()).toEqual [[2, 4], [6, 8]]
 
-        inputEvent = new Event('textInput')
-        inputEvent.data = 'x'
-        Object.defineProperty(inputEvent, 'target', get: -> componentNode.querySelector('.hidden-input'))
-        componentNode.dispatchEvent(inputEvent)
+        editor.insertText('x')
         nextAnimationFrame()
 
         expect(editor.getSelectedScreenRange()).toEqual [[2, 5], [2, 5]]
@@ -1809,6 +1912,20 @@ describe "TextEditorComponent", ->
         linesNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenPosition([8, 0]), which: 1))
         expect(nextAnimationFrame).toBe noAnimationFrame
         expect(editor.getSelectedScreenRange()).toEqual [[2, 5], [2, 5]]
+
+        linesNode.dispatchEvent(buildMouseEvent('mousedown', clientCoordinatesForScreenPosition([2, 4]), which: 1))
+        linesNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenPosition([5, 4]), which: 1))
+        nextAnimationFrame()
+        expect(editor.getSelectedScreenRange()).toEqual [[2, 4], [5, 4]]
+
+        editor.delete()
+        nextAnimationFrame()
+
+        expect(editor.getSelectedScreenRange()).toEqual [[2, 4], [2, 4]]
+
+        linesNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenPosition([8, 0]), which: 1))
+        expect(nextAnimationFrame).toBe noAnimationFrame
+        expect(editor.getSelectedScreenRange()).toEqual [[2, 4], [2, 4]]
 
       describe "when the command key is held down", ->
         it "adds a new selection and selects to the nearest screen position, then merges intersecting selections when the mouse button is released", ->
@@ -1856,7 +1973,7 @@ describe "TextEditorComponent", ->
 
         linesNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenPosition([11, 11]), which: 1))
         nextAnimationFrame()
-        expect(editor.getSelectedScreenRange()).toEqual [[5, 6], [11, 13]]
+        expect(editor.getSelectedScreenRange()).toEqual [[5, 6], [12, 2]]
 
         maximalScrollTop = editor.getScrollTop()
 
@@ -1883,13 +2000,13 @@ describe "TextEditorComponent", ->
 
         linesNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenPosition([11, 11]), which: 1))
         nextAnimationFrame()
-        expect(editor.getSelectedScreenRange()).toEqual [[5, 0], [12, 0]]
+        expect(editor.getSelectedScreenRange()).toEqual [[5, 0], [12, 2]]
 
         maximalScrollTop = editor.getScrollTop()
 
         linesNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenPosition([8, 4]), which: 1))
         nextAnimationFrame()
-        expect(editor.getSelectedScreenRange()).toEqual [[5, 0], [9, 0]]
+        expect(editor.getSelectedScreenRange()).toEqual [[5, 0], [8, 0]]
         expect(editor.getScrollTop()).toBe maximalScrollTop # does not autoscroll upward (regression)
 
         linesNode.dispatchEvent(buildMouseEvent('mouseup', clientCoordinatesForScreenPosition([9, 3]), which: 1))
@@ -1980,22 +2097,28 @@ describe "TextEditorComponent", ->
         nextAnimationFrame()
         expect(editor.getLastSelection().isReversed()).toBe false
 
-      it "autoscrolls to the cursor position, but not the entire selected range", ->
+      it "autoscrolls when the cursor approaches the top or bottom of the editor", ->
         wrapperNode.style.height = 6 * lineHeightInPixels + 'px'
         component.measureDimensions()
+        nextAnimationFrame()
 
         expect(editor.getScrollTop()).toBe 0
 
         gutterNode.dispatchEvent(buildMouseEvent('mousedown', clientCoordinatesForScreenRowInGutter(2)))
-        gutterNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenRowInGutter(6)))
+        gutterNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenRowInGutter(8)))
         nextAnimationFrame()
 
         expect(editor.getScrollTop()).toBeGreaterThan 0
         maxScrollTop = editor.getScrollTop()
 
-        gutterNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenRowInGutter(5)))
+
+        gutterNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenRowInGutter(10)))
         nextAnimationFrame()
         expect(editor.getScrollTop()).toBe maxScrollTop
+
+        gutterNode.dispatchEvent(buildMouseEvent('mousemove', clientCoordinatesForScreenRowInGutter(7)))
+        nextAnimationFrame()
+        expect(editor.getScrollTop()).toBeLessThan maxScrollTop
 
       it "stops selecting if a textInput event occurs during the drag", ->
         gutterNode.dispatchEvent(buildMouseEvent('mousedown', clientCoordinatesForScreenRowInGutter(2)))
@@ -2716,27 +2839,27 @@ describe "TextEditorComponent", ->
 
       describe "when a string is selected", ->
         beforeEach ->
-          editor.setSelectedBufferRange [[0, 4], [0, 9]] # select 'quick'
+          editor.setSelectedBufferRanges [[[0, 4], [0, 9]], [[0, 16], [0, 19]]] # select 'quick' and 'fun'
 
         it "inserts the chosen completion", ->
           componentNode.dispatchEvent(buildIMECompositionEvent('compositionstart', target: inputNode))
           componentNode.dispatchEvent(buildIMECompositionEvent('compositionupdate', data: 's', target: inputNode))
-          expect(editor.lineTextForBufferRow(0)).toBe 'var ssort = function () {'
+          expect(editor.lineTextForBufferRow(0)).toBe 'var ssort = sction () {'
 
           componentNode.dispatchEvent(buildIMECompositionEvent('compositionupdate', data: 'sd', target: inputNode))
-          expect(editor.lineTextForBufferRow(0)).toBe 'var sdsort = function () {'
+          expect(editor.lineTextForBufferRow(0)).toBe 'var sdsort = sdction () {'
 
           componentNode.dispatchEvent(buildIMECompositionEvent('compositionend', target: inputNode))
           componentNode.dispatchEvent(buildTextInputEvent(data: '速度', target: inputNode))
-          expect(editor.lineTextForBufferRow(0)).toBe 'var 速度sort = function () {'
+          expect(editor.lineTextForBufferRow(0)).toBe 'var 速度sort = 速度ction () {'
 
         it "reverts back to the original text when the completion helper is dismissed", ->
           componentNode.dispatchEvent(buildIMECompositionEvent('compositionstart', target: inputNode))
           componentNode.dispatchEvent(buildIMECompositionEvent('compositionupdate', data: 's', target: inputNode))
-          expect(editor.lineTextForBufferRow(0)).toBe 'var ssort = function () {'
+          expect(editor.lineTextForBufferRow(0)).toBe 'var ssort = sction () {'
 
           componentNode.dispatchEvent(buildIMECompositionEvent('compositionupdate', data: 'sd', target: inputNode))
-          expect(editor.lineTextForBufferRow(0)).toBe 'var sdsort = function () {'
+          expect(editor.lineTextForBufferRow(0)).toBe 'var sdsort = sdction () {'
 
           componentNode.dispatchEvent(buildIMECompositionEvent('compositionend', target: inputNode))
           expect(editor.lineTextForBufferRow(0)).toBe 'var quicksort = function () {'

@@ -207,6 +207,15 @@ describe "TextEditor", ->
         lastCursor = editor.addCursorAtScreenPosition([2, 0])
         expect(editor.getLastCursor()).toBe lastCursor
 
+      it "creates a new cursor at (0, 0) if the last cursor has been destroyed", ->
+        editor.getLastCursor().destroy()
+        expect(editor.getLastCursor().getBufferPosition()).toEqual([0, 0])
+
+    describe ".getCursors()", ->
+      it "creates a new cursor at (0, 0) if the last cursor has been destroyed", ->
+        editor.getLastCursor().destroy()
+        expect(editor.getCursors()[0].getBufferPosition()).toEqual([0, 0])
+
     describe "when the cursor moves", ->
       it "clears a goal column established by vertical movement", ->
         editor.setText('b')
@@ -1026,6 +1035,16 @@ describe "TextEditor", ->
 
     beforeEach ->
       selection = editor.getLastSelection()
+
+    describe ".getLastSelection()", ->
+      it "creates a new selection at (0, 0) if the last selection has been destroyed", ->
+        editor.getLastSelection().destroy()
+        expect(editor.getLastSelection().getBufferRange()).toEqual([[0, 0], [0, 0]])
+
+    describe ".getSelections()", ->
+      it "creates a new selection at (0, 0) if the last selection has been destroyed", ->
+        editor.getLastSelection().destroy()
+        expect(editor.getSelections()[0].getBufferRange()).toEqual([[0, 0], [0, 0]])
 
     describe "when the selection range changes", ->
       it "emits an event with the old range, new range, and the selection that moved", ->
@@ -3417,6 +3436,63 @@ describe "TextEditor", ->
         expect(buffer.lineForRow(0)).not.toContain "foo"
         expect(buffer.lineForRow(0)).toContain "fovar"
 
+      it "restores cursors and selections to their states before and after undone and redone changes", ->
+        editor.setSelectedBufferRanges([
+          [[0, 0], [0, 0]],
+          [[1, 0], [1, 3]],
+        ])
+        editor.insertText("abc")
+
+        expect(editor.getSelectedBufferRanges()).toEqual [
+          [[0, 3], [0, 3]],
+          [[1, 3], [1, 3]]
+        ]
+
+        editor.setCursorBufferPosition([0, 0])
+        editor.setSelectedBufferRanges([
+          [[2, 0], [2, 0]],
+          [[3, 0], [3, 0]],
+          [[4, 0], [4, 3]],
+        ])
+        editor.insertText("def")
+
+        expect(editor.getSelectedBufferRanges()).toEqual [
+          [[2, 3], [2, 3]],
+          [[3, 3], [3, 3]]
+          [[4, 3], [4, 3]]
+        ]
+
+        editor.setCursorBufferPosition([0, 0])
+        editor.undo()
+
+        expect(editor.getSelectedBufferRanges()).toEqual [
+          [[2, 0], [2, 0]],
+          [[3, 0], [3, 0]],
+          [[4, 0], [4, 3]],
+        ]
+
+        editor.undo()
+
+        expect(editor.getSelectedBufferRanges()).toEqual [
+          [[0, 0], [0, 0]],
+          [[1, 0], [1, 3]]
+        ]
+
+        editor.redo()
+
+        expect(editor.getSelectedBufferRanges()).toEqual [
+          [[0, 3], [0, 3]],
+          [[1, 3], [1, 3]]
+        ]
+
+        editor.redo()
+
+        expect(editor.getSelectedBufferRanges()).toEqual [
+          [[2, 3], [2, 3]],
+          [[3, 3], [3, 3]]
+          [[4, 3], [4, 3]]
+        ]
+
       it "restores the selected ranges after undo and redo", ->
         editor.setSelectedBufferRanges([[[1, 6], [1, 10]], [[1, 22], [1, 27]]])
         editor.delete()
@@ -4459,26 +4535,21 @@ describe "TextEditor", ->
       expect(editor.getScrollBottom()).toBe (9 + editor.getVerticalScrollMargin()) * 10
 
   describe ".pageUp/Down()", ->
-    it "scrolls one screen height up or down and moves the cursor one page length", ->
+    it "moves the cursor down one page length", ->
       editor.setLineHeightInPixels(10)
       editor.setHeight(50)
-      expect(editor.getScrollHeight()).toBe 130
       expect(editor.getCursorBufferPosition().row).toBe 0
 
       editor.pageDown()
-      expect(editor.getScrollTop()).toBe 50
       expect(editor.getCursorBufferPosition().row).toBe 5
 
       editor.pageDown()
-      expect(editor.getScrollTop()).toBe 80
       expect(editor.getCursorBufferPosition().row).toBe 10
 
       editor.pageUp()
-      expect(editor.getScrollTop()).toBe 30
       expect(editor.getCursorBufferPosition().row).toBe 5
 
       editor.pageUp()
-      expect(editor.getScrollTop()).toBe 0
       expect(editor.getCursorBufferPosition().row).toBe 0
 
   describe ".selectPageUp/Down()", ->
@@ -4489,28 +4560,22 @@ describe "TextEditor", ->
       expect(editor.getCursorBufferPosition().row).toBe 0
 
       editor.selectPageDown()
-      expect(editor.getScrollTop()).toBe 30
       expect(editor.getSelectedBufferRanges()).toEqual [[[0, 0], [5, 0]]]
 
       editor.selectPageDown()
-      expect(editor.getScrollTop()).toBe 80
       expect(editor.getSelectedBufferRanges()).toEqual [[[0, 0], [10, 0]]]
 
       editor.selectPageDown()
-      expect(editor.getScrollTop()).toBe 80
       expect(editor.getSelectedBufferRanges()).toEqual [[[0, 0], [12, 2]]]
 
       editor.moveToBottom()
       editor.selectPageUp()
-      expect(editor.getScrollTop()).toBe 50
       expect(editor.getSelectedBufferRanges()).toEqual [[[7, 0], [12, 2]]]
 
       editor.selectPageUp()
-      expect(editor.getScrollTop()).toBe 0
       expect(editor.getSelectedBufferRanges()).toEqual [[[2, 0], [12, 2]]]
 
       editor.selectPageUp()
-      expect(editor.getScrollTop()).toBe 0
       expect(editor.getSelectedBufferRanges()).toEqual [[[0, 0], [12, 2]]]
 
   describe '.get/setPlaceholderText()', ->

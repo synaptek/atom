@@ -304,6 +304,10 @@ class TextEditorPresenter
     @state.hiddenInput.width = Math.max(width, 2)
 
   updateContentState: ->
+    if @boundingClientRect?
+      @sharedGutterStyles.maxHeight = @boundingClientRect.height
+      @state.content.maxHeight = @boundingClientRect.height
+
     @state.content.width = Math.max(@contentWidth + @verticalScrollbarWidth, @contentFrameWidth)
     @state.content.scrollWidth = @scrollWidth
     @state.content.scrollLeft = @scrollLeft
@@ -340,18 +344,20 @@ class TextEditorPresenter
       tile.left = -@scrollLeft
       tile.height = @tileSize * @lineHeight
       tile.display = "block"
-      tile.zIndex = zIndex--
+      tile.zIndex = zIndex
       tile.highlights ?= {}
 
       gutterTile = @lineNumberGutter.tiles[startRow] ?= {}
       gutterTile.top = startRow * @lineHeight - @scrollTop
       gutterTile.height = @tileSize * @lineHeight
       gutterTile.display = "block"
+      gutterTile.zIndex = zIndex
 
       @updateLinesState(tile, startRow, endRow) if @shouldUpdateLinesState
       @updateLineNumbersState(gutterTile, startRow, endRow) if @shouldUpdateLineNumbersState
 
       visibleTiles[startRow] = true
+      zIndex--
 
     if @mouseWheelScreenRow? and @model.tokenizedLineForScreenRow(@mouseWheelScreenRow)?
       mouseWheelTile = @tileForRow(@mouseWheelScreenRow)
@@ -412,9 +418,10 @@ class TextEditorPresenter
 
   updateCursorState: (cursor) ->
     return unless @startRow? and @endRow? and @hasPixelRectRequirements() and @baseCharacterWidth?
-    return unless cursor.isVisible() and @startRow <= cursor.getScreenRow() < @endRow
+    screenRange = cursor.getScreenRange()
+    return unless cursor.isVisible() and @startRow <= screenRange.start.row < @endRow
 
-    pixelRect = @pixelRectForScreenRange(cursor.getScreenRange())
+    pixelRect = @pixelRectForScreenRange(screenRange)
     pixelRect.width = @baseCharacterWidth if pixelRect.width is 0
     @state.content.cursors[cursor.id] = pixelRect
 
@@ -541,7 +548,7 @@ class TextEditorPresenter
         @clearDecorationsForCustomGutterName(gutterName)
       else
         @customGutterDecorations[gutterName] = {}
-      return if not @gutterIsVisible(gutter)
+      continue if not @gutterIsVisible(gutter)
 
       relevantDecorations = @customGutterDecorationsInRange(gutterName, @startRow, @endRow - 1)
       relevantDecorations.forEach (decoration) =>
@@ -583,7 +590,9 @@ class TextEditorPresenter
       wrapCount = 0
 
     if endRow > startRow
-      for bufferRow, i in @model.bufferRowsForScreenRows(startRow, endRow - 1)
+      bufferRows = @model.bufferRowsForScreenRows(startRow, endRow - 1)
+      zIndex = bufferRows.length - 1
+      for bufferRow, i in bufferRows
         if bufferRow is lastBufferRow
           wrapCount++
           id = bufferRow + '-' + wrapCount
@@ -599,8 +608,9 @@ class TextEditorPresenter
         decorationClasses = @lineNumberDecorationClassesForRow(screenRow)
         foldable = @model.isFoldableAtScreenRow(screenRow)
 
-        tileState.lineNumbers[id] = {screenRow, bufferRow, softWrapped, top, decorationClasses, foldable}
+        tileState.lineNumbers[id] = {screenRow, bufferRow, softWrapped, top, decorationClasses, foldable, zIndex}
         visibleLineNumberIds[id] = true
+        zIndex--
 
     for id of tileState.lineNumbers
       delete tileState.lineNumbers[id] unless visibleLineNumberIds[id]
@@ -918,6 +928,7 @@ class TextEditorPresenter
     unless @clientRectsEqual(@boundingClientRect, boundingClientRect)
       @boundingClientRect = boundingClientRect
       @shouldUpdateOverlaysState = true
+      @shouldUpdateContentState = true
 
       @emitDidUpdateState()
 
@@ -1161,7 +1172,7 @@ class TextEditorPresenter
         if decoration.isType('line') or decoration.isType('gutter')
           @addToLineDecorationCaches(decoration, range)
         else if decoration.isType('highlight')
-          @updateHighlightState(decoration)
+          @updateHighlightState(decoration, range)
 
     for tileId, tileState of @state.content.tiles
       for id, highlight of tileState.highlights
@@ -1232,12 +1243,11 @@ class TextEditorPresenter
 
     intersectingRange
 
-  updateHighlightState: (decoration) ->
+  updateHighlightState: (decoration, range) ->
     return unless @startRow? and @endRow? and @lineHeight? and @hasPixelPositionRequirements()
 
     properties = decoration.getProperties()
     marker = decoration.getMarker()
-    range = marker.getScreenRange()
 
     if decoration.isDestroyed() or not marker.isValid() or range.isEmpty() or not range.intersectsRowRange(@startRow, @endRow - 1)
       return
